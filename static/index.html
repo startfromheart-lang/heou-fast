@@ -258,12 +258,30 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label">训练数据路径</label>
-                                    <input type="text" class="form-control" id="class-train-path" placeholder="/path/to/train/data">
+                                    <label class="form-label">训练类型</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="class-train-type" id="class-train-type-color" value="color" checked onchange="updateClassTrainPaths()">
+                                        <label class="form-check-label" for="class-train-type-color">舌色</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="class-train-type" id="class-train-type-shape" value="shape" onchange="updateClassTrainPaths()">
+                                        <label class="form-check-label" for="class-train-type-shape">舌形</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="class-train-type" id="class-train-type-coat" value="coat" onchange="updateClassTrainPaths()">
+                                        <label class="form-check-label" for="class-train-type-coat">舌苔</label>
+                                    </div>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label">验证数据路径（可选）</label>
-                                    <input type="text" class="form-control" id="class-valid-path" placeholder="/path/to/valid/data">
+                                    <label class="form-label">训练数据路径</label>
+                                    <input type="text" class="form-control" id="class-train-path" readonly>
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="class-use-validation" onchange="toggleClassValidPath()">
+                                        <label class="form-check-label" for="class-use-validation">进行数据验证</label>
+                                    </div>
+                                    <input type="text" class="form-control" id="class-valid-path" readonly disabled>
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">训练轮数</label>

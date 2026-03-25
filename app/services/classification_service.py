@@ -37,6 +37,7 @@ class ClassificationService:
         lr: float = 1e-3,
         batch_size: int = 16,
         model_name: str = "resnet18",
+        model_prefix: str = "",
         resume_model: Optional[str] = None,
         pretrained: bool = False,
         progress_callback = None
@@ -51,6 +52,7 @@ class ClassificationService:
             lr: 学习率
             batch_size: 批次大小
             model_name: 模型名称
+            model_prefix: 模型文件名前缀
             resume_model: 恢复训练的模型路径
             progress_callback: 进度回调函数
 
@@ -67,6 +69,7 @@ class ClassificationService:
         print(f"[train] 学习率: {lr}")
         print(f"[train] 批次大小: {batch_size}")
         print(f"[train] 模型名称: {model_name}")
+        print(f"[train] 模型前缀: {model_prefix}")
         print(f"[train] 预训练: {pretrained}")
         print("=" * 60)
 
@@ -265,7 +268,7 @@ class ClassificationService:
             # 保存模型
             update_progress("saving", "正在保存模型...")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_path = settings.MODELS_DIR / f"classification_{model_name}_{timestamp}.pkl"
+            model_path = settings.MODELS_DIR / f"{model_prefix}{model_name}_{timestamp}.pkl"
 
             # 确保模型目录存在
             model_path.parent.mkdir(parents=True, exist_ok=True)
