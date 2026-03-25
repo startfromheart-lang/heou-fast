@@ -18,10 +18,18 @@ ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
 
+# 训练类型路径配置（相对于data目录的子路径）
+TRAIN_TYPE_PATHS = {
+    "color": {"train": "color/train", "valid": "color/valid", "prefix": "color_"},
+    "shape": {"train": "shape/train", "valid": "shape/valid", "prefix": "shape_"},
+    "coat": {"train": "coat/train", "valid": "coat/valid", "prefix": "coat_"}
+}
+
+
 @router.post("/train")
 async def train_classification(
-    train_path: str = Form(...),
-    valid_path: Optional[str] = Form(None),
+    train_type: str = Form(...),  # 训练类型: color, shape, coat
+    use_validation: bool = Form(False),  # 是否使用验证数据
     epochs: int = Form(10),
     lr: float = Form(1e-3),
     batch_size: int = Form(2),  # 使用最小批次大小
@@ -39,27 +47,44 @@ async def train_classification(
                 content={"success": False, "error": "已有分类训练任务正在进行，请等待完成后再试"}
             )
 
+        # 验证训练类型
+        if train_type not in TRAIN_TYPE_PATHS:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"无效的训练类型: {train_type}，可选: color, shape, coat"}
+            )
+
+        # 根据训练类型获取相对路径，并拼接为基于data目录的完整路径
+        paths = TRAIN_TYPE_PATHS[train_type]
+        train_path = settings.DATA_DIR / paths["train"]
+        valid_path = settings.DATA_DIR / paths["valid"] if use_validation else None
+        model_prefix = paths["prefix"]
+
         # 打印调试信息
         print("=" * 60)
         print("[BACKEND DEBUG] 收到的训练请求参数:")
+        print(f"  train_type: {train_type}")
+        print(f"  use_validation: {use_validation}")
         print(f"  network_name: {network_name} (type: {type(network_name).__name__})")
         print(f"  epochs: {epochs}")
         print(f"  lr: {lr}")
         print(f"  batch_size: {batch_size}")
         print(f"  pretrained: {pretrained}")
+        print(f"  data_dir: {settings.DATA_DIR}")
         print(f"  train_path: {train_path}")
         print(f"  valid_path: {valid_path}")
+        print(f"  model_prefix: {model_prefix}")
         print("=" * 60)
 
         # 验证路径
-        if not Path(train_path).exists():
+        if not train_path.exists():
             return JSONResponse(
                 status_code=400,
                 content={"success": False, "error": f"训练数据路径不存在: {train_path}"}
             )
 
-        # 如果提供了验证路径，也进行验证
-        if valid_path and not Path(valid_path).exists():
+        # 如果启用了验证，验证路径必须存在
+        if use_validation and valid_path and not valid_path.exists():
             return JSONResponse(
                 status_code=400,
                 content={"success": False, "error": f"验证数据路径不存在: {valid_path}"}
@@ -76,6 +101,7 @@ async def train_classification(
             lr=lr,
             batch_size=batch_size,
             model_name=network_name,
+            model_prefix=model_prefix,
             resume_model=resume_model,
             pretrained=pretrained
         )

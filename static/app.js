@@ -517,11 +517,94 @@ async function classifyImage() {
 let classificationTrainingPolling = null;
 let segmentationTrainingPolling = null;
 
+// 训练类型路径配置（相对于data目录的子路径，使用正斜杠）
+const CLASS_TRAIN_PATHS = {
+    color: { train: 'color/train', valid: 'color/valid', prefix: 'color_' },
+    shape: { train: 'shape/train', valid: 'shape/valid', prefix: 'shape_' },
+    coat: { train: 'coat/train', valid: 'coat/valid', prefix: 'coat_' }
+};
+
+// 数据目录基础路径（从后端获取或默认值）
+let DATA_BASE_PATH = '';
+
+// 获取数据目录路径
+async function loadDataBasePath() {
+    try {
+        const response = await fetch(`${API_BASE}/system/config`);
+        const data = await response.json();
+        if (data.data_dir) {
+            DATA_BASE_PATH = data.data_dir;
+            // 路径加载完成后更新显示
+            updateClassTrainPaths();
+        }
+    } catch (error) {
+        console.warn('[WARN] 无法获取数据目录路径，使用相对路径显示');
+        DATA_BASE_PATH = '';
+        updateClassTrainPaths();
+    }
+}
+
+// 构建完整路径
+function buildFullPath(subPath) {
+    if (!DATA_BASE_PATH) {
+        return subPath;
+    }
+    // 确保基础路径不以斜杠结尾，子路径不以斜杠开头
+    const base = DATA_BASE_PATH.replace(/\\/g, '/').replace(/\/$/, '');
+    const sub = subPath.replace(/^\//, '');
+    return `${base}/${sub}`;
+}
+
+// 更新分类训练路径显示
+function updateClassTrainPaths() {
+    const trainType = document.querySelector('input[name="class-train-type"]:checked')?.value || 'color';
+    const paths = CLASS_TRAIN_PATHS[trainType];
+
+    const trainPathInput = document.getElementById('class-train-path');
+    const validPathInput = document.getElementById('class-valid-path');
+
+    if (trainPathInput && paths) {
+        trainPathInput.value = buildFullPath(paths.train);
+    }
+    if (validPathInput && paths) {
+        // 如果验证未启用，显示完整路径但清空值
+        const useValidation = document.getElementById('class-use-validation')?.checked || false;
+        if (useValidation) {
+            validPathInput.value = buildFullPath(paths.valid);
+        } else {
+            validPathInput.value = '';
+        }
+    }
+}
+
+// 切换验证路径显示
+function toggleClassValidPath() {
+    const useValidation = document.getElementById('class-use-validation')?.checked || false;
+    const validPathInput = document.getElementById('class-valid-path');
+
+    if (validPathInput) {
+        validPathInput.disabled = !useValidation;
+        const trainType = document.querySelector('input[name="class-train-type"]:checked')?.value || 'color';
+        const paths = CLASS_TRAIN_PATHS[trainType];
+        if (useValidation && paths) {
+            validPathInput.value = buildFullPath(paths.valid);
+        } else {
+            validPathInput.value = '';
+        }
+    }
+}
+
+// 页面加载时初始化路径显示
+document.addEventListener('DOMContentLoaded', function() {
+    // 先尝试从后端获取数据目录路径，然后初始化分类训练路径
+    loadDataBasePath();
+});
+
 async function trainClassification() {
     const buttonId = 'class-train-btn';
     const button = document.getElementById(buttonId);
-    const trainPath = document.getElementById('class-train-path').value;
-    const validPath = document.getElementById('class-valid-path').value;
+    const trainType = document.querySelector('input[name="class-train-type"]:checked')?.value || 'color';
+    const useValidation = document.getElementById('class-use-validation')?.checked || false;
     const epochs = document.getElementById('class-epochs').value;
     const lr = document.getElementById('class-lr').value;
     const batchSize = document.getElementById('class-batch-size').value;
@@ -535,7 +618,8 @@ async function trainClassification() {
         return;
     }
 
-    console.log('[DEBUG] 前端参数 - trainPath:', trainPath);
+    console.log('[DEBUG] 前端参数 - trainType:', trainType);
+    console.log('[DEBUG] 前端参数 - useValidation:', useValidation);
     console.log('[DEBUG] 前端参数 - modelArch:', modelArch);
     console.log('[DEBUG] 前端参数 - modelArchSelect.value:', modelArchSelect?.value);
 
@@ -551,14 +635,9 @@ async function trainClassification() {
         }
     }
 
-    if (!trainPath) {
-        alert('请输入训练数据路径');
-        return;
-    }
-
     const formData = new FormData();
-    formData.append('train_path', trainPath);
-    if (validPath) formData.append('valid_path', validPath);
+    formData.append('train_type', trainType);
+    formData.append('use_validation', useValidation);
     formData.append('epochs', epochs);
     formData.append('lr', lr);
     formData.append('batch_size', batchSize);
