@@ -4,7 +4,7 @@
 from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
 import uuid
 
 from app.services.classification_service import classification_service
@@ -17,19 +17,49 @@ ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.
 # 最大上传文件大小 (50MB)
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
+# 训练类型路径配置
+TRAIN_TYPE_PATHS = {
+    "color": {
+        "train": "color/train",
+        "valid": "color/valid",
+        "prefix": "color"
+    },
+    "shape": {
+        "train": "shape/train",
+        "valid": "shape/valid",
+        "prefix": "shape"
+    },
+    "coat": {
+        "train": "coat/train",
+        "valid": "coat/valid",
+        "prefix": "coat"
+    }
+}
+
 
 @router.post("/train")
 async def train_classification(
-    train_path: str = Form(...),
-    valid_path: Optional[str] = Form(None),
+    train_type: Literal["color", "shape", "coat"] = Form(...),
+    enable_validation: bool = Form(False),
     epochs: int = Form(10),
     lr: float = Form(1e-3),
-    batch_size: int = Form(2),  # 使用最小批次大小
-    network_name: str = Form("resnet18"),  # 改名为 network_name 避免与 Pydantic 的 model_ 命名空间冲突
+    batch_size: int = Form(2),
+    network_name: str = Form("resnet18"),
     resume_model: Optional[str] = Form(None),
-    pretrained: bool = Form(False)  # 是否使用预训练模型
+    pretrained: bool = Form(False)
 ):
-    """训练分类模型"""
+    """训练分类模型
+    
+    Args:
+        train_type: 训练类型，可选 color(舌色)、shape(舌形)、coat(舌苔)
+        enable_validation: 是否启用数据验证
+        epochs: 训练轮数
+        lr: 学习率
+        batch_size: 批次大小
+        network_name: 网络架构名称
+        resume_model: 恢复训练的模型路径
+        pretrained: 是否使用预训练模型
+    """
     try:
         # 检查是否已有任务在进行
         from app.services.classification_service import training_progress
@@ -39,9 +69,16 @@ async def train_classification(
                 content={"success": False, "error": "已有分类训练任务正在进行，请等待完成后再试"}
             )
 
+        # 根据训练类型获取路径配置
+        type_config = TRAIN_TYPE_PATHS[train_type]
+        train_path = str(settings.DATA_DIR / type_config["train"])
+        valid_path = str(settings.DATA_DIR / type_config["valid"]) if enable_validation else None
+
         # 打印调试信息
         print("=" * 60)
         print("[BACKEND DEBUG] 收到的训练请求参数:")
+        print(f"  train_type: {train_type}")
+        print(f"  enable_validation: {enable_validation}")
         print(f"  network_name: {network_name} (type: {type(network_name).__name__})")
         print(f"  epochs: {epochs}")
         print(f"  lr: {lr}")
@@ -58,7 +95,7 @@ async def train_classification(
                 content={"success": False, "error": f"训练数据路径不存在: {train_path}"}
             )
 
-        # 如果提供了验证路径，也进行验证
+        # 如果启用了验证，检查验证路径
         if valid_path and not Path(valid_path).exists():
             return JSONResponse(
                 status_code=400,
@@ -77,7 +114,8 @@ async def train_classification(
             batch_size=batch_size,
             model_name=network_name,
             resume_model=resume_model,
-            pretrained=pretrained
+            pretrained=pretrained,
+            model_prefix=type_config["prefix"]
         )
 
         # 深度清理确保可序列化
@@ -234,17 +272,31 @@ async def list_models():
     settings.MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     models = []
-    for model_file in settings.MODELS_DIR.glob("classification_*.pkl"):
-        # 只调用一次 stat() 获取所有文件信息
-        stat = model_file.stat()
-        # st_birthtime 在 Windows 上可用，Linux 上使用 st_ctime
-        created_time = getattr(stat, 'st_birthtime', stat.st_ctime)
-        models.append({
-            "name": model_file.name,
-            "path": str(model_file),
-            "size_mb": round(stat.st_size / 1024 / 1024, 2),
-            "created_time": float(created_time)  # 确保是 Python 原生 float
-        })
+    # 支持新的模型命名格式：color_*, shape_*, coat_*
+    # 同时兼容旧的 classification_* 格式
+    for pattern in ["color_*.pkl", "shape_*.pkl", "coat_*.pkl", "classification_*.pkl"]:
+        for model_file in settings.MODELS_DIR.glob(pattern):
+            stat = model_file.stat()
+            created_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+            
+            # 从文件名解析训练类型
+            filename = model_file.name
+            if filename.startswith("color_"):
+                train_type = "舌色"
+            elif filename.startswith("shape_"):
+                train_type = "舌形"
+            elif filename.startswith("coat_"):
+                train_type = "舌苔"
+            else:
+                train_type = "通用"
+            
+            models.append({
+                "name": model_file.name,
+                "path": str(model_file),
+                "size_mb": round(stat.st_size / 1024 / 1024, 2),
+                "created_time": float(created_time),
+                "train_type": train_type
+            })
     return {"models": sorted(models, key=lambda x: x["created_time"], reverse=True)}
 
 
@@ -252,7 +304,9 @@ async def list_models():
 async def delete_model(model_name: str):
     """删除模型"""
     # 验证文件名格式，防止删除非模型文件
-    if not model_name.startswith("classification_") or not model_name.endswith(".pkl"):
+    # 支持新的命名格式：color_*, shape_*, coat_* 和旧的 classification_*
+    valid_prefixes = ("color_", "shape_", "coat_", "classification_")
+    if not (model_name.startswith(valid_prefixes) and model_name.endswith(".pkl")):
         return JSONResponse(
             status_code=400,
             content={"success": False, "error": "无效的模型文件名"}

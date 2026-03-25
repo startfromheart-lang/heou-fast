@@ -349,7 +349,7 @@ async function loadClassificationModels() {
         const testSelect = document.getElementById('class-test-model');
         
         const options = '<option value="">使用最新模型</option>' + 
-            data.models.map(m => `<option value="${m.path}">${m.name} (${m.size_mb} MB)</option>`).join('');
+            data.models.map(m => `<option value="${m.path}">[${m.train_type}] ${m.name} (${m.size_mb} MB)</option>`).join('');
         
         select.innerHTML = options;
         testSelect.innerHTML = options;
@@ -512,6 +512,37 @@ async function classifyImage() {
     }
 }
 
+// 训练类型路径配置
+const TRAIN_PATHS = {
+    color: {
+        train: 'color/train',
+        valid: 'color/valid'
+    },
+    shape: {
+        train: 'shape/train',
+        valid: 'shape/valid'
+    },
+    coat: {
+        train: 'coat/train',
+        valid: 'coat/valid'
+    }
+};
+
+// 更新训练路径显示
+function updateTrainPaths() {
+    const trainType = document.querySelector('input[name="train-type"]:checked').value;
+    const paths = TRAIN_PATHS[trainType];
+    document.getElementById('class-train-path').value = paths.train;
+    document.getElementById('class-valid-path').value = paths.valid;
+}
+
+// 切换验证开关
+function toggleValidation() {
+    const enableValidation = document.getElementById('enable-validation').checked;
+    const validPathInput = document.getElementById('class-valid-path');
+    validPathInput.disabled = !enableValidation;
+}
+
 // 训练分类模型
 // 训练进度轮询
 let classificationTrainingPolling = null;
@@ -520,8 +551,8 @@ let segmentationTrainingPolling = null;
 async function trainClassification() {
     const buttonId = 'class-train-btn';
     const button = document.getElementById(buttonId);
-    const trainPath = document.getElementById('class-train-path').value;
-    const validPath = document.getElementById('class-valid-path').value;
+    const trainType = document.querySelector('input[name="train-type"]:checked').value;
+    const enableValidation = document.getElementById('enable-validation').checked;
     const epochs = document.getElementById('class-epochs').value;
     const lr = document.getElementById('class-lr').value;
     const batchSize = document.getElementById('class-batch-size').value;
@@ -535,30 +566,13 @@ async function trainClassification() {
         return;
     }
 
-    console.log('[DEBUG] 前端参数 - trainPath:', trainPath);
+    console.log('[DEBUG] 前端参数 - trainType:', trainType);
+    console.log('[DEBUG] 前端参数 - enableValidation:', enableValidation);
     console.log('[DEBUG] 前端参数 - modelArch:', modelArch);
-    console.log('[DEBUG] 前端参数 - modelArchSelect.value:', modelArchSelect?.value);
-
-    // 检查 modelArch 是否有效
-    if (!modelArch || modelArch === 'resnet18') {
-        const options = modelArchSelect?.options;
-        if (options && options.length > 0) {
-            console.warn('[WARN] modelArch 值为默认值 resnet18，可能未正确选择');
-            console.warn('[WARN] 可选的模型选项:');
-            for (let i = 0; i < options.length; i++) {
-                console.warn(`  ${i}: ${options[i].value} - ${options[i].text}`);
-            }
-        }
-    }
-
-    if (!trainPath) {
-        alert('请输入训练数据路径');
-        return;
-    }
 
     const formData = new FormData();
-    formData.append('train_path', trainPath);
-    if (validPath) formData.append('valid_path', validPath);
+    formData.append('train_type', trainType);
+    formData.append('enable_validation', enableValidation);
     formData.append('epochs', epochs);
     formData.append('lr', lr);
     formData.append('batch_size', batchSize);
@@ -572,7 +586,6 @@ async function trainClassification() {
         console.log(`  ${key}: ${value}`);
     }
     console.log('[DEBUG] FormData 完整对象:', formDataEntries);
-    console.log('[DEBUG] network_name 值:', formDataEntries['network_name']);
 
     // 禁用按钮
     disableButton(buttonId, 'trainClass');
@@ -1236,13 +1249,6 @@ async function loadConfig() {
         const response = await fetch(`${API_BASE}/system/config`);
         const data = await response.json();
 
-        // 设置分类任务的默认路径
-        if (data.default_paths && data.default_paths.classification) {
-            document.getElementById('class-train-path').value = data.default_paths.classification.train;
-            document.getElementById('class-valid-path').value = data.default_paths.classification.valid;
-            document.getElementById('class-test-path').value = data.default_paths.classification.test;
-        }
-
         // 设置分割任务的默认路径
         if (data.default_paths && data.default_paths.segmentation) {
             document.getElementById('seg-train-path').value = data.default_paths.segmentation.train;
@@ -1251,10 +1257,10 @@ async function loadConfig() {
     } catch (error) {
         console.error('加载配置信息失败:', error);
         // 如果加载失败，使用默认值
-        document.getElementById('class-train-path').value = './data/color/train';
-        document.getElementById('class-valid-path').value = './data/color/valid';
-        document.getElementById('class-test-path').value = './data/color/test';
         document.getElementById('seg-train-path').value = './data/segment/train';
         document.getElementById('seg-test-path').value = './data/segment/test';
     }
+
+    // 初始化分类训练路径（基于训练类型）
+    updateTrainPaths();
 }

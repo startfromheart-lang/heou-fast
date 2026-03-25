@@ -39,6 +39,7 @@ class ClassificationService:
         model_name: str = "resnet18",
         resume_model: Optional[str] = None,
         pretrained: bool = False,
+        model_prefix: str = "classification",
         progress_callback = None
     ) -> Dict[str, Any]:
         """
@@ -52,6 +53,8 @@ class ClassificationService:
             batch_size: 批次大小
             model_name: 模型名称
             resume_model: 恢复训练的模型路径
+            pretrained: 是否使用预训练权重
+            model_prefix: 模型保存前缀（如 color, shape, coat）
             progress_callback: 进度回调函数
 
         Returns:
@@ -68,6 +71,7 @@ class ClassificationService:
         print(f"[train] 批次大小: {batch_size}")
         print(f"[train] 模型名称: {model_name}")
         print(f"[train] 预训练: {pretrained}")
+        print(f"[train] 模型前缀: {model_prefix}")
         print("=" * 60)
 
         self.is_training = True
@@ -265,7 +269,7 @@ class ClassificationService:
             # 保存模型
             update_progress("saving", "正在保存模型...")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_path = settings.MODELS_DIR / f"classification_{model_name}_{timestamp}.pkl"
+            model_path = settings.MODELS_DIR / f"{model_prefix}_{model_name}_{timestamp}.pkl"
 
             # 确保模型目录存在
             model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -330,10 +334,13 @@ class ClassificationService:
                 learn = self.model
             else:
                 # 尝试自动加载最新的模型
+                # 支持新的命名格式：color_*, shape_*, coat_* 和旧的 classification_*
                 from pathlib import Path
                 models_dir = settings.MODELS_DIR
                 if models_dir.exists():
-                    models = list(models_dir.glob("classification_*.pkl"))
+                    models = []
+                    for pattern in ["color_*.pkl", "shape_*.pkl", "coat_*.pkl", "classification_*.pkl"]:
+                        models.extend(models_dir.glob(pattern))
                     if models:
                         # 按修改时间排序，选择最新的
                         latest_model = max(models, key=lambda p: p.stat().st_mtime)
