@@ -31,8 +31,8 @@ class ClassificationService:
     
     def train(
         self,
-        train_path: str,
-        valid_path: Optional[str] = None,
+        training_type: str,
+        enable_validation: bool = False,
         epochs: int = 10,
         lr: float = 1e-3,
         batch_size: int = 16,
@@ -45,8 +45,8 @@ class ClassificationService:
         训练分类模型
 
         Args:
-            train_path: 训练数据路径
-            valid_path: 验证数据路径（可选）
+            training_type: 训练类型 (color/shape/coat)
+            enable_validation: 是否启用数据验证
             epochs: 训练轮数
             lr: 学习率
             batch_size: 批次大小
@@ -59,14 +59,43 @@ class ClassificationService:
         """
         from datetime import datetime
 
+        # 根据训练类型确定固定路径（相对路径，基于data目录）
+        TRAINING_PATHS = {
+            'color': {
+                'train': 'color\\train',
+                'valid': 'color\\valid',
+                'prefix': 'color_'
+            },
+            'shape': {
+                'train': 'shape\\train',
+                'valid': 'shape\\valid',
+                'prefix': 'shape_'
+            },
+            'coat': {
+                'train': 'coat\\train',
+                'valid': 'coat\\valid',
+                'prefix': 'coat_'
+            }
+        }
+
+        # 获取训练配置
+        config = TRAINING_PATHS.get(training_type, TRAINING_PATHS['color'])
+        
+        # 基于data目录拼接完整路径
+        train_path = str(settings.DATA_DIR / config['train'])
+        valid_path = str(settings.DATA_DIR / config['valid']) if enable_validation else None
+        model_prefix = config['prefix']
+
         print("=" * 60)
-        print("[train] 开始训练（文件夹模式）")
+        print("[train] 开始训练（舌诊分类模式）")
+        print(f"[train] 训练类型: {training_type}")
         print(f"[train] 训练路径: {train_path}")
-        print(f"[train] 验证路径: {valid_path}")
+        print(f"[train] 验证路径: {valid_path} (启用验证: {enable_validation})")
         print(f"[train] 训练轮数: {epochs}")
         print(f"[train] 学习率: {lr}")
         print(f"[train] 批次大小: {batch_size}")
         print(f"[train] 模型名称: {model_name}")
+        print(f"[train] 模型前缀: {model_prefix}")
         print(f"[train] 预训练: {pretrained}")
         print("=" * 60)
 
@@ -262,10 +291,10 @@ class ClassificationService:
             # 训练模型（使用自定义进度回调）
             learn.fit_one_cycle(epochs, lr, cbs=[TrainingProgressCallback(epochs)])
             
-            # 保存模型
+            # 保存模型（使用训练类型前缀）
             update_progress("saving", "正在保存模型...")
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            model_path = settings.MODELS_DIR / f"classification_{model_name}_{timestamp}.pkl"
+            model_path = settings.MODELS_DIR / f"{model_prefix}{model_name}_{timestamp}.pkl"
 
             # 确保模型目录存在
             model_path.parent.mkdir(parents=True, exist_ok=True)

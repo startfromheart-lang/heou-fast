@@ -20,8 +20,8 @@ MAX_UPLOAD_SIZE = 50 * 1024 * 1024
 
 @router.post("/train")
 async def train_classification(
-    train_path: str = Form(...),
-    valid_path: Optional[str] = Form(None),
+    training_type: str = Form(...),
+    enable_validation: bool = Form(False),
     epochs: int = Form(10),
     lr: float = Form(1e-3),
     batch_size: int = Form(2),  # 使用最小批次大小
@@ -39,39 +39,32 @@ async def train_classification(
                 content={"success": False, "error": "已有分类训练任务正在进行，请等待完成后再试"}
             )
 
+        # 验证训练类型
+        if training_type not in ['color', 'shape', 'coat']:
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "error": f"无效的训练类型: {training_type}"}
+            )
+
         # 打印调试信息
         print("=" * 60)
         print("[BACKEND DEBUG] 收到的训练请求参数:")
+        print(f"  training_type: {training_type}")
+        print(f"  enable_validation: {enable_validation}")
         print(f"  network_name: {network_name} (type: {type(network_name).__name__})")
         print(f"  epochs: {epochs}")
         print(f"  lr: {lr}")
         print(f"  batch_size: {batch_size}")
         print(f"  pretrained: {pretrained}")
-        print(f"  train_path: {train_path}")
-        print(f"  valid_path: {valid_path}")
         print("=" * 60)
-
-        # 验证路径
-        if not Path(train_path).exists():
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": f"训练数据路径不存在: {train_path}"}
-            )
-
-        # 如果提供了验证路径，也进行验证
-        if valid_path and not Path(valid_path).exists():
-            return JSONResponse(
-                status_code=400,
-                content={"success": False, "error": f"验证数据路径不存在: {valid_path}"}
-            )
 
         # 训练任务（使用 run_in_threadpool 避免阻塞事件循环）
         from fastapi.concurrency import run_in_threadpool
 
         result = await run_in_threadpool(
             classification_service.train,
-            train_path=train_path,
-            valid_path=valid_path,
+            training_type=training_type,
+            enable_validation=enable_validation,
             epochs=epochs,
             lr=lr,
             batch_size=batch_size,
@@ -234,25 +227,29 @@ async def list_models():
     settings.MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     models = []
-    for model_file in settings.MODELS_DIR.glob("classification_*.pkl"):
-        # 只调用一次 stat() 获取所有文件信息
-        stat = model_file.stat()
-        # st_birthtime 在 Windows 上可用，Linux 上使用 st_ctime
-        created_time = getattr(stat, 'st_birthtime', stat.st_ctime)
-        models.append({
-            "name": model_file.name,
-            "path": str(model_file),
-            "size_mb": round(stat.st_size / 1024 / 1024, 2),
-            "created_time": float(created_time)  # 确保是 Python 原生 float
-        })
+    # 支持多种前缀的分类模型（旧版classification_，新版color_/shape_/coat_）
+    patterns = ["classification_*.pkl", "color_*.pkl", "shape_*.pkl", "coat_*.pkl"]
+    for pattern in patterns:
+        for model_file in settings.MODELS_DIR.glob(pattern):
+            # 只调用一次 stat() 获取所有文件信息
+            stat = model_file.stat()
+            # st_birthtime 在 Windows 上可用，Linux 上使用 st_ctime
+            created_time = getattr(stat, 'st_birthtime', stat.st_ctime)
+            models.append({
+                "name": model_file.name,
+                "path": str(model_file),
+                "size_mb": round(stat.st_size / 1024 / 1024, 2),
+                "created_time": float(created_time)  # 确保是 Python 原生 float
+            })
     return {"models": sorted(models, key=lambda x: x["created_time"], reverse=True)}
 
 
 @router.delete("/models/{model_name}")
 async def delete_model(model_name: str):
     """删除模型"""
-    # 验证文件名格式，防止删除非模型文件
-    if not model_name.startswith("classification_") or not model_name.endswith(".pkl"):
+    # 验证文件名格式，防止删除非模型文件（支持旧版和新版前缀）
+    valid_prefixes = ("classification_", "color_", "shape_", "coat_")
+    if not model_name.startswith(valid_prefixes) or not model_name.endswith(".pkl"):
         return JSONResponse(
             status_code=400,
             content={"success": False, "error": "无效的模型文件名"}

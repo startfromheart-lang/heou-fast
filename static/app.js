@@ -155,6 +155,9 @@ async function loadSystemStatus() {
         loadClassificationModels();
         loadSegmentationModels();
         
+        // 初始化训练路径显示
+        updateTrainingPaths();
+        
     } catch (error) {
         document.getElementById('system-status').innerHTML = `
             <div class="alert alert-danger">
@@ -339,6 +342,48 @@ function updatePretrainedHint(type) {
     }
 }
 
+// 更新训练数据路径（根据训练类型）
+function updateTrainingPaths() {
+    const trainingType = document.querySelector('input[name="training-type"]:checked').value;
+    const trainPathInput = document.getElementById('class-train-path');
+    const validPathInput = document.getElementById('class-valid-path');
+    
+    // 根据类型设置固定路径
+    let trainPath, validPath;
+    switch(trainingType) {
+        case 'color':
+            trainPath = 'color\\train';
+            validPath = 'color\\valid';
+            break;
+        case 'shape':
+            trainPath = 'shape\\train';
+            validPath = 'shape\\valid';
+            break;
+        case 'coat':
+            trainPath = 'coat\\train';
+            validPath = 'coat\\valid';
+            break;
+        default:
+            trainPath = 'color\\train';
+            validPath = 'color\\valid';
+    }
+    
+    trainPathInput.value = trainPath;
+    validPathInput.value = validPath;
+}
+
+// 切换验证路径显示
+function toggleValidationPath() {
+    const enableValidation = document.getElementById('enable-validation').checked;
+    const validationContainer = document.getElementById('validation-path-container');
+    
+    if (enableValidation) {
+        validationContainer.style.display = 'block';
+    } else {
+        validationContainer.style.display = 'none';
+    }
+}
+
 // 加载分类模型列表
 async function loadClassificationModels() {
     try {
@@ -520,8 +565,8 @@ let segmentationTrainingPolling = null;
 async function trainClassification() {
     const buttonId = 'class-train-btn';
     const button = document.getElementById(buttonId);
-    const trainPath = document.getElementById('class-train-path').value;
-    const validPath = document.getElementById('class-valid-path').value;
+    const trainingType = document.querySelector('input[name="training-type"]:checked').value;
+    const enableValidation = document.getElementById('enable-validation').checked;
     const epochs = document.getElementById('class-epochs').value;
     const lr = document.getElementById('class-lr').value;
     const batchSize = document.getElementById('class-batch-size').value;
@@ -535,30 +580,13 @@ async function trainClassification() {
         return;
     }
 
-    console.log('[DEBUG] 前端参数 - trainPath:', trainPath);
+    console.log('[DEBUG] 前端参数 - trainingType:', trainingType);
+    console.log('[DEBUG] 前端参数 - enableValidation:', enableValidation);
     console.log('[DEBUG] 前端参数 - modelArch:', modelArch);
-    console.log('[DEBUG] 前端参数 - modelArchSelect.value:', modelArchSelect?.value);
-
-    // 检查 modelArch 是否有效
-    if (!modelArch || modelArch === 'resnet18') {
-        const options = modelArchSelect?.options;
-        if (options && options.length > 0) {
-            console.warn('[WARN] modelArch 值为默认值 resnet18，可能未正确选择');
-            console.warn('[WARN] 可选的模型选项:');
-            for (let i = 0; i < options.length; i++) {
-                console.warn(`  ${i}: ${options[i].value} - ${options[i].text}`);
-            }
-        }
-    }
-
-    if (!trainPath) {
-        alert('请输入训练数据路径');
-        return;
-    }
 
     const formData = new FormData();
-    formData.append('train_path', trainPath);
-    if (validPath) formData.append('valid_path', validPath);
+    formData.append('training_type', trainingType);
+    formData.append('enable_validation', enableValidation);
     formData.append('epochs', epochs);
     formData.append('lr', lr);
     formData.append('batch_size', batchSize);
