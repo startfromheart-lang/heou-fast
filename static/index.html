@@ -244,6 +244,13 @@
                                         <option value="">使用最新模型</option>
                                     </select>
                                 </div>
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="class-detect-tongue" checked>
+                                    <label class="form-check-label" for="class-detect-tongue">
+                                        自动检测并裁剪舌头区域
+                                        <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="启用后，系统会自动检测图片中的舌头区域并裁剪，然后进行分类预测"></i>
+                                    </label>
+                                </div>
                                 <button id="class-infer-btn" class="btn btn-primary" onclick="classifyImage()">
                                     <i class="bi bi-play"></i> 开始分类
                                 </button>

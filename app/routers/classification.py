@@ -131,7 +131,8 @@ async def train_classification(
 @router.post("/predict")
 async def predict_classification(
     file: UploadFile = File(...),
-    checkpoint_path: Optional[str] = Form(None)  # 改名为 checkpoint_path 避免与 Pydantic 的 model_ 命名空间冲突
+    checkpoint_path: Optional[str] = Form(None),  # 改名为 checkpoint_path 避免与 Pydantic 的 model_ 命名空间冲突
+    detect_tongue: bool = Form(True)  # 是否进行舌头检测和裁剪
 ):
     """图像分类预测"""
     try:
@@ -188,7 +189,8 @@ async def predict_classification(
         result = await run_in_threadpool(
             classification_service.predict,
             image_path=str(upload_path),
-            model_path=checkpoint_path  # 内部映射回 model_path
+            model_path=checkpoint_path,  # 内部映射回 model_path
+            detect_tongue=detect_tongue
         )
 
         # 深度清理确保可序列化

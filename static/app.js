@@ -429,7 +429,9 @@ async function classifyImage() {
     const button = document.getElementById(buttonId);
     const input = document.getElementById('class-image-input');
     const modelSelect = document.getElementById('class-model-select');
+    const detectTongueCheckbox = document.getElementById('class-detect-tongue');
     let modelPath = modelSelect.value;
+    const detectTongue = detectTongueCheckbox ? detectTongueCheckbox.checked : true;
 
     // 检查按钮是否已禁用
     if (button && button.disabled) {
@@ -461,10 +463,12 @@ async function classifyImage() {
     if (modelPath) {
         formData.append('checkpoint_path', modelPath);
     }
+    formData.append('detect_tongue', detectTongue);
 
     // 禁用按钮
     disableButton(buttonId, 'classify');
-    showLoading('正在进行分类...');
+    const loadingText = detectTongue ? '正在检测舌头并进行分类...' : '正在进行分类...';
+    showLoading(loadingText);
 
     try {
         const response = await fetch(`${API_BASE}/classification/predict`, {
@@ -483,10 +487,20 @@ async function classifyImage() {
                 </div>
             `).join('');
 
+            let tongueInfoHtml = '';
+            if (result.tongue_detected) {
+                tongueInfoHtml = `
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-check-circle"></i> 已自动检测并裁剪舌头区域
+                    </div>
+                `;
+            }
+
             document.getElementById('class-result').innerHTML = `
                 <div class="card">
                     <div class="card-body">
                         <h5 class="card-title">分类结果</h5>
+                        ${tongueInfoHtml}
                         <div class="metric-card mb-3">
                             <div class="metric-value">${result.predicted_class}</div>
                             <div>置信度: ${(result.confidence * 100).toFixed(2)}%</div>
